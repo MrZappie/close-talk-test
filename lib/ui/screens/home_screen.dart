@@ -120,48 +120,67 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     );
                   },
                 ),
-                // History: union of users present in sent/received message maps
+                // History: union of users present in sent/received message maps + currently available users
                 ValueListenableBuilder<Map<ChatUserModel, List<MessageModel>>>(
                   valueListenable: receivedMessages,
                   builder: (context, receivedMap, _) {
                     return ValueListenableBuilder<Map<ChatUserModel, List<MessageModel>>>(
                       valueListenable: sendMessages,
                       builder: (context, sentMap, __) {
-                        final users = <ChatUserModel>{...receivedMap.keys, ...sentMap.keys}.toList();
-                        return _buildAnimatedListView(
-                          itemCount: users.length,
-                          itemBuilder: (context, index) {
-                            final user = users[index];
-                            final wasAvailable = discoveredList.value.any((u) => u.id == user.id);
-                            final last = _lastMessageForUser(user, sentMap, receivedMap);
-                            return _buildWhiteListItem(
-                              child: ListTile(
-                                leading: const CircleAvatar(
-                                  backgroundColor: AppColors.accent,
-                                  foregroundColor: Colors.white,
-                                  child: Icon(Icons.person, size: 20),
-                                ),
-                                title: Text(user.userName, style: const TextStyle(color: AppColors.primary, fontSize: 16, fontWeight: FontWeight.bold)),
-                                subtitle: Text(
-                                  last?.$1 ?? 'No messages yet',
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _buildAvailabilityIndicator(wasAvailable),
-                                    if (last != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4.0),
-                                        child: Text(
-                                          _formatTime(last.$2),
-                                          style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                        ),
+                        return ValueListenableBuilder<List<ChatUserModel>>(
+                          valueListenable: discoveredList,
+                          builder: (context, discoveredUsers, ___) {
+                            // Combine message history users + currently available users
+                            final messageUsers = <ChatUserModel>{...receivedMap.keys, ...sentMap.keys};
+                            final allUsers = <ChatUserModel>{...messageUsers, ...discoveredUsers};
+                            final users = allUsers.toList();
+                            
+                            return _buildAnimatedListView(
+                              itemCount: users.length,
+                              itemBuilder: (context, index) {
+                                final user = users[index];
+                                final isAvailable = discoveredUsers.any((u) => u.id == user.id || u.endpointId == user.endpointId);
+                                final isConnected = connectedEndpoints.value.any((u) => u.id == user.id || u.endpointId == user.endpointId);
+                                final last = _lastMessageForUser(user, sentMap, receivedMap);
+                                
+                                return _buildWhiteListItem(
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: isConnected ? Colors.green : AppColors.accent,
+                                      foregroundColor: Colors.white,
+                                      child: Icon(
+                                        isConnected ? Icons.person : Icons.person_outline, 
+                                        size: 20
                                       ),
-                                  ],
-                                ),
-                              ),
-                              onTap: () => _navigateToChat(user),
+                                    ),
+                                    title: Text(user.userName, style: const TextStyle(color: AppColors.primary, fontSize: 16, fontWeight: FontWeight.bold)),
+                                    subtitle: Text(
+                                      isConnected ? 'Connected - Ready to chat' : 
+                                      isAvailable ? 'Available nearby' : 
+                                      last?.$1 ?? 'No messages yet',
+                                      style: TextStyle(
+                                        color: isConnected ? Colors.green : 
+                                        isAvailable ? Colors.orange : Colors.grey
+                                      ),
+                                    ),
+                                    trailing: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        _buildAvailabilityIndicator(isAvailable || isConnected),
+                                        if (last != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 4.0),
+                                            child: Text(
+                                              _formatTime(last.$2),
+                                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  onTap: () => _navigateToChat(user),
+                                );
+                              },
                             );
                           },
                         );
