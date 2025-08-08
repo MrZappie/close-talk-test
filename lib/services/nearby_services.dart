@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:sample_app/core/constants.dart';
 import 'package:sample_app/core/nearby_state_storage.dart';
@@ -16,6 +18,15 @@ class NearbyServices {
   final Map<String, ChatUserModel> _connectedUsers = {};
   final Map<String, ConnectionInfo> _connectionInfoMap = {};
   final Set<String> _pendingConnections = {};
+  static const Duration _proximityCheckInterval = Duration(seconds: 5);
+  static const int _maxConnectionAttempts = 2; // Fail if can't connect quickly
+  final Map<String, int> _connectionAttempts = {};
+  Timer? _proximityTimer;
+  final Map<String, int> _connectionStability = {};
+  Timer? _connectionMonitorTimer;
+  static const Duration _connectionCheckInterval = Duration(seconds: 3);
+  static const int _maxStabilityThreshold =
+      3; // Allowed consecutive weak signals
 
   /// Start both advertising and discovery
   Future<void> startBroadcast() async {
@@ -61,6 +72,9 @@ class NearbyServices {
       }
 
       _pendingConnections.clear();
+
+      _proximityTimer?.cancel();
+      _proximityTimer = null;
       print('Broadcast stopped');
     } catch (e) {
       print('Stop broadcast error: $e');
@@ -112,6 +126,7 @@ class NearbyServices {
         onEndpointLost: _onEndpointLost,
       );
       _isDiscovering = true;
+      _startProximityMonitoring();
       NearbyStateStorage.setIsDiscovering(true);
       print('Discovery started');
     } catch (e) {
@@ -119,6 +134,24 @@ class NearbyServices {
       print('Discovery error: $e');
       rethrow;
     }
+  }
+
+  // Add proximity monitoring
+  void _startProximityMonitoring() {
+    _proximityTimer?.cancel();
+    _proximityTimer = Timer.periodic(_proximityCheckInterval, (timer) {
+      // Remove devices that take too long to connect
+      final distantDevices = _connectionAttempts.entries
+          .where((entry) => entry.value > _maxConnectionAttempts)
+          .map((e) => e.key)
+          .toList();
+
+      for (final endpointId in distantDevices) {
+        print('Removing distant device: $endpointId');
+        _onEndpointLost(endpointId);
+        Nearby().disconnectFromEndpoint(endpointId);
+      }
+    });
   }
 
   /// Handle new device discovery
@@ -129,6 +162,15 @@ class NearbyServices {
   ) async {
     if (_pendingConnections.contains(endpointId)) return;
 
+    // Track connection attempts
+    _connectionAttempts[endpointId] =
+        (_connectionAttempts[endpointId] ?? 0) + 1;
+
+    // Skip if too many attempts (likely distant)
+    if (_connectionAttempts[endpointId]! > _maxConnectionAttempts) {
+      print('Skipping distant endpoint: $endpointId');
+      return;
+    }
     print('Found endpoint: $endpointId ($userName)');
     _pendingConnections.add(endpointId);
 
@@ -178,12 +220,17 @@ class NearbyServices {
     Nearby().acceptConnection(
       endpointId,
       onPayLoadRecieved: _onPayloadReceived,
+      onPayloadTransferUpdate: _onPayloadTransferUpdate,
     );
   }
 
   /// Handle connection results
   void _onConnectionResult(String endpointId, Status status) {
     if (status == Status.CONNECTED) {
+      _connectionAttempts.remove(endpointId);
+      _connectionStability[endpointId] = 0; // Initialize stability counter
+      _startConnectionMonitoring();
+      _connectionAttempts.remove(endpointId);
       final info = _connectionInfoMap[endpointId];
       final user = ChatUserModel(
         id: endpointId,
@@ -198,13 +245,61 @@ class NearbyServices {
 
       print('Connected to ${user.userName}');
     } else {
+      _connectionAttempts[endpointId] =
+          (_connectionAttempts[endpointId] ?? 0) + 1;
       print('Connection failed to $endpointId: $status');
     }
+  }
+
+  void _startConnectionMonitoring() {
+    _connectionMonitorTimer?.cancel();
+    _connectionMonitorTimer = Timer.periodic(_connectionCheckInterval, (_) {
+      _connectedUsers.keys.forEach((endpointId) {
+        _checkConnectionHealth(endpointId);
+      });
+    });
+  }
+
+  void _checkConnectionHealth(String endpointId) {
+    // Simulate RSSI check (replace with actual if available)
+    final isWeakConnection =
+        Random().nextDouble() > 0.7; // 30% chance of weak signal
+
+    if (isWeakConnection) {
+      _connectionStability[endpointId] =
+          (_connectionStability[endpointId] ?? 0) + 1;
+
+      if (_connectionStability[endpointId]! >= _maxStabilityThreshold) {
+        _handleDistantDevice(endpointId);
+      }
+    } else {
+      _connectionStability[endpointId] = 0; // Reset counter on good signal
+    }
+  }
+
+  void _handleDistantDevice(String endpointId) {
+    print('Device $endpointId moved out of range');
+    Nearby().disconnectFromEndpoint(endpointId);
+    _onDisconnected(endpointId);
+
+    // Optional: Notify UI about disconnection reason
+    receivedMessages.value = {
+      ...receivedMessages.value,
+      _connectedUsers[endpointId]!: [
+        ...receivedMessages.value[_connectedUsers[endpointId]] ?? [],
+        MessageModel(
+          value: "SYSTEM: Connection lost (out of range)",
+          createdTime: DateTime.now(),
+        ),
+      ],
+    };
   }
 
   /// Handle disconnections
   void _onDisconnected(String endpointId) {
     print('Disconnected from $endpointId');
+
+    _connectionStability.remove(endpointId);
     connectedEndpoints.value = connectedEndpoints.value
         .where((u) => u.id != endpointId)
         .toList();
@@ -212,11 +307,23 @@ class NearbyServices {
     discoveredList.value = discoveredList.value
         .where((u) => u.id != endpointId)
         .toList();
+    _connectedUsers.remove(endpointId);
+  }
+
+  void _onPayloadTransferUpdate(
+    String endpointId,
+    PayloadTransferUpdate update,
+  ) {
+    if (update.status == PayloadStatus.FAILURE) {
+      _connectionStability[endpointId] =
+          (_connectionStability[endpointId] ?? 0) + 1;
+    }
   }
 
   /// Process incoming messages
   void _onPayloadReceived(String endpointId, Payload payload) {
     try {
+      _connectionStability[endpointId] = 0;
       if (payload.bytes == null) return;
 
       final data = jsonDecode(utf8.decode(payload.bytes!));
