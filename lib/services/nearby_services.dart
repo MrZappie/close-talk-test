@@ -63,6 +63,8 @@ class NearbyServices {
     connectedUsers.clear();
     _connectionInfoMap.clear();
     connectedEndpoints.value = [];
+    discoveredList.notifyListeners();
+    connectedEndpoints.notifyListeners();
     await startBroadcast();
   }
 
@@ -218,19 +220,17 @@ class NearbyServices {
     print('Found endpoint: $endpointId ($userName)');
     _pendingConnections.add(endpointId);
 
-    // Parse endpointName to extract stable id and display name
-    final parsed = _parseEndpointName(userName);
-    final stableId = parsed.$2 ?? endpointId;
-    final displayName = parsed.$1;
+    // Use endpointId as the stable id for this user, and userName as display name
+    final displayName = userName;
 
     // Add to discovered list and persist in Hive users box
-    final newUser = ChatUserModel(id: stableId, userName: displayName, endpointId: endpointId);
+    final newUser = ChatUserModel(id: endpointId, userName: displayName, endpointId: endpointId);
     discoveredList.value = [
-      ...discoveredList.value.where((u) => u.endpointId != endpointId && u.id != stableId),
+      ...discoveredList.value.where((u) => u.endpointId != endpointId),
       newUser,
     ];
     final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
-    await usersBox.put(stableId, newUser);
+    await usersBox.put(endpointId, newUser);
 
     await Nearby().requestConnection(
       _userName,
@@ -245,6 +245,9 @@ class NearbyServices {
       },
       onDisconnected: _onDisconnected,
     );
+    discoveredList.notifyListeners();
+    connectedEndpoints.notifyListeners();
+    
   }
 
   /// Handle lost device
@@ -263,6 +266,9 @@ class NearbyServices {
         .toList();
 
     _connectedUsers.remove(endpointId);
+    
+    discoveredList.notifyListeners();
+    connectedEndpoints.notifyListeners();
   }
 
   /// Accept incoming connections
@@ -283,22 +289,21 @@ class NearbyServices {
       _startConnectionMonitoring();
       _connectionAttempts.remove(endpointId);
       final info = _connectionInfoMap[endpointId];
-      final parsed = _parseEndpointName(info?.endpointName ?? 'Unknown');
       final user = ChatUserModel(
-        id: parsed.$2 ?? endpointId,
-        userName: parsed.$1,
+        id: endpointId,
+        userName: info?.endpointName ?? 'Unknown',
         endpointId: endpointId,
       );
 
       _connectedUsers[endpointId] = user;
       connectedEndpoints.value = [
-        ...connectedEndpoints.value.where((u) => u.endpointId != endpointId && u.id != user.id),
+        ...connectedEndpoints.value.where((u) => u.endpointId != endpointId),
         user,
       ];
 
       // Persist user in Hive
       final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
-      usersBox.put(user.id, user);
+      usersBox.put(endpointId, user);
 
       print('Connected to ${user.userName}');
     } else {
@@ -378,20 +383,11 @@ class NearbyServices {
   }
 
   String _composeEndpointName() {
-    // Include display name and stable id so peers can map to a consistent user record
-    final name = _userName;
-    final id = _myId ?? '';
-    return id.isEmpty ? name : '$name|$id';
+    // Just use the display name for the endpoint name
+    return _userName;
   }
 
-  /// Parses endpoint name of the form "Name|uuid", returns (name, uuid?)
-  (String, String?) _parseEndpointName(String endpointName) {
-    final parts = endpointName.split('|');
-    if (parts.length >= 2) {
-      return (parts[0], parts[1]);
-    }
-    return (endpointName, null);
-  }
+  // Removed _parseEndpointName since we're not using the UUID in endpoint names anymore
 
   /// Process incoming messages
   void _onPayloadReceived(String endpointId, Payload payload) {
