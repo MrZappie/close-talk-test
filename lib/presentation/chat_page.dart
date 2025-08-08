@@ -23,7 +23,7 @@ class ChatPage extends StatelessWidget {
           child: Column(
             children: [
               SizedBox(
-                height: MediaQuery.of(context).size.height * 0.8,
+                height: MediaQuery.of(context).size.height * 0.7,
                 child: ChatHistorySpace(user: user),
               ),
 

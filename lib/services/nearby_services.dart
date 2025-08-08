@@ -36,6 +36,12 @@ class NearbyServices {
   Future<void> restartBroadcast() async {
     await stopBroadcast();
     await Future.delayed(const Duration(milliseconds: 500));
+    await Nearby().stopAllEndpoints();
+    _pendingConnections.clear();
+    discoveredList.value = [];
+    connectedUsers.clear();
+    _connectionInfoMap.clear();
+    connectedEndpoints.value = [];
     await startBroadcast();
   }
 
@@ -203,6 +209,9 @@ class NearbyServices {
         .where((u) => u.id != endpointId)
         .toList();
     _connectedUsers.remove(endpointId);
+    discoveredList.value = discoveredList.value
+        .where((u) => u.id != endpointId)
+        .toList();
   }
 
   /// Process incoming messages
@@ -214,6 +223,8 @@ class NearbyServices {
       if (data['type'] == _messageType) {
         _handleMessageReceived(endpointId, data);
       }
+      print(sendMessages.value);
+      print(receivedMessages.value);
     } catch (e) {
       print('Payload processing error: $e');
     }
@@ -237,7 +248,11 @@ class NearbyServices {
   void sendChatMessage(MessageModel message, ChatUserModel user) {
     try {
       final bytes = utf8.encode(
-        jsonEncode({'type': _messageType, 'message': message.toJson()}),
+        jsonEncode({
+          'type': _messageType,
+          'message': message.toJson(),
+          'createdTime': DateTime.now().toIso8601String(),
+        }),
       );
 
       Nearby().sendBytesPayload(user.id, bytes);

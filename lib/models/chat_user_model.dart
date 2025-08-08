@@ -1,15 +1,10 @@
-import 'package:geolocator/geolocator.dart';
-
 class ChatUserModel {
   final String id;
   final String userName;
 
   ChatUserModel({required this.id, required this.userName});
 
-  ChatUserModel copyWith({
-    String? id,
-    String? userName,
-  }) {
+  ChatUserModel copyWith({String? id, String? userName}) {
     return ChatUserModel(
       id: id ?? this.id,
       userName: userName ?? this.userName,

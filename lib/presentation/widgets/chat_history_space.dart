@@ -16,37 +16,39 @@ class ChatHistorySpace extends StatelessWidget {
         return ValueListenableBuilder<Map<ChatUserModel, List<MessageModel>>>(
           valueListenable: sendMessages,
           builder: (context, sendMap, _) {
-            final r = receivedMap[user] ?? [];
-            final s = sendMap[user] ?? [];
+            // Get messages for this specific user
+            final received = receivedMap[user] ?? [];
+            final sent = sendMap[user] ?? [];
 
             // Combine and sort messages
-            final combinedMessages = <MapEntry<MessageModel, bool>>[
-              ...r.map((m) => MapEntry(m, true)),
-              ...s.map((m) => MapEntry(m, false)),
-            ]..sort((a, b) => a.key.createdTime.compareTo(b.key.createdTime));
+            final combined = <MessageModel>[...received, ...sent];
+            combined.sort((a, b) => b.createdTime.compareTo(a.createdTime));
 
-            return ListView.separated(
-              itemCount: combinedMessages.length,
+            return ListView.builder(
+              reverse: true, // Newest messages at bottom
+              itemCount: combined.length,
               itemBuilder: (context, index) {
-                final entry = combinedMessages[index];
+                final message = combined[index];
+                final isReceived = received.contains(message);
+
                 return Align(
-                  alignment: entry.value
+                  alignment: isReceived
                       ? Alignment.centerLeft
                       : Alignment.centerRight,
                   child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 17,
-                      vertical: 8,
+                      horizontal: 16,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: entry.value ? Colors.grey[300] : Colors.blue[200],
-                      borderRadius: BorderRadius.circular(30),
+                      color: isReceived ? Colors.grey[300] : Colors.blue[200],
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(entry.key.value),
+                    child: Text(message.value),
                   ),
                 );
               },
-              separatorBuilder: (_, __) => const SizedBox(height: 20),
             );
           },
         );
