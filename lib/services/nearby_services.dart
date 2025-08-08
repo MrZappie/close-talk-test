@@ -48,7 +48,12 @@ class NearbyServices {
         _userName = me.userName;
         _myId = me.id;
       }
-      await hydrateFromStorage();
+      
+      // Only hydrate from storage on initial startup, not on restart
+      if (discoveredList.value.isEmpty && connectedEndpoints.value.isEmpty) {
+        await hydrateFromStorage();
+      }
+      
       await _startAdvertising();
       await _startDiscovery();
 
@@ -66,12 +71,20 @@ class NearbyServices {
     await Nearby().stopAllEndpoints();
     _pendingConnections.clear();
     _blacklistedEndpoints.clear(); // Clear blacklist on restart
+    _connectionAttempts.clear(); // Clear connection attempts
+    _connectionStartTimes.clear(); // Clear connection start times
+    _connectionStability.clear(); // Clear connection stability
+    
+    // Clear UI state
     discoveredList.value = [];
     connectedUsers.clear();
     _connectionInfoMap.clear();
     connectedEndpoints.value = [];
+    
+    // Force UI update
     discoveredList.notifyListeners();
     connectedEndpoints.notifyListeners();
+    
     await startBroadcast();
   }
 
@@ -564,5 +577,12 @@ class NearbyServices {
       },
       onDisconnected: _onDisconnected,
     );
+  }
+
+  /// Clear all discovered users and force UI refresh
+  void clearDiscoveredUsers() {
+    discoveredList.value = [];
+    discoveredList.notifyListeners();
+    print('Cleared discovered users list');
   }
 }

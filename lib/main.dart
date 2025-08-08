@@ -4,6 +4,7 @@ import 'package:sample_app/core/values.dart';
 import 'package:sample_app/core/hive_adapters.dart';
 import 'package:sample_app/models/chat_user_model.dart';
 import 'package:sample_app/models/user_profile.dart';
+import 'package:sample_app/ui/screens/splash_screen.dart';
 import 'package:uuid/uuid.dart';
 import 'package:sample_app/core/nearby_state_storage.dart';
 import 'package:sample_app/presentation/base_page.dart';
@@ -45,6 +46,9 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: BasePage());
+    return MaterialApp(
+      home: SplashScreen(),
+      debugShowCheckedModeBanner: false,
+    );
   }
 }

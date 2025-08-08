@@ -101,6 +101,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                          await _service.startBroadcast();
                        } else {
                          await _service.stopBroadcast();
+                         // Clear discovered users when stopping broadcast
+                         _service.clearDiscoveredUsers();
                        }
                      } catch (e) {
                        // Revert state if operation failed

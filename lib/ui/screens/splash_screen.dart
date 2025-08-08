@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sample_app/presentation/base_page.dart';
 import '../app_colors.dart';
 import 'main_shell.dart';
 
@@ -21,7 +22,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const MainShell()),
+      MaterialPageRoute(builder: (_) => const BasePage()),
     );
   }
 
@@ -34,7 +35,7 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              'closeTalk',
+              'CloseTalk',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,

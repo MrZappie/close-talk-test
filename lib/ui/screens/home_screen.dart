@@ -186,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     BoxShadow(color: lightShadow, offset: const Offset(-4, -4), blurRadius: 10, spreadRadius: 1),
                   ],
           ),
-          child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          child: Center(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5))),
         ),
       ),
     );
