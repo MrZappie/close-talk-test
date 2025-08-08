@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:hive/hive.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:sample_app/core/constants.dart';
 import 'package:sample_app/core/nearby_state_storage.dart';
 import 'package:sample_app/core/values.dart';
 import 'package:sample_app/models/chat_user_model.dart';
 import 'package:sample_app/models/message_model.dart';
+import 'package:sample_app/models/user_profile.dart';
 
 class NearbyServices {
   static const String _messageType = 'message';
@@ -14,7 +16,7 @@ class NearbyServices {
   // State tracking
   bool _isAdvertising = false;
   bool _isDiscovering = false;
-  String _userName = userName;
+  String _userName = 'User';
   final Map<String, ChatUserModel> _connectedUsers = {};
   final Map<String, ConnectionInfo> _connectionInfoMap = {};
   final Set<String> _pendingConnections = {};
@@ -32,7 +34,13 @@ class NearbyServices {
   Future<void> startBroadcast() async {
     try {
       if (_isAdvertising || _isDiscovering) return;
-
+      // Load username from Hive profile, fallback if missing
+      final Box<UserProfile> profileBox = Hive.box<UserProfile>(kBoxProfile);
+      final UserProfile? me = profileBox.get('me');
+      if (me != null) {
+        _userName = me.userName;
+      }
+      await hydrateFromStorage();
       await _startAdvertising();
       await _startDiscovery();
 
@@ -85,9 +93,43 @@ class NearbyServices {
   /// Update username and restart if needed
   Future<void> updateUserName(String newName) async {
     _userName = newName;
-    if (_isAdvertising || _isDiscovering) {
-      await restartBroadcast();
+    // Persist to Hive profile
+    final Box<UserProfile> profileBox = Hive.box<UserProfile>(kBoxProfile);
+    final UserProfile? me = profileBox.get('me');
+    if (me == null) {
+      // Generate a simple id if not present; use random or time-based
+      final generatedId = DateTime.now().millisecondsSinceEpoch.toString();
+      await profileBox.put('me', UserProfile(id: generatedId, userName: newName));
+    } else {
+      await profileBox.put('me', me.copyWith(userName: newName));
     }
+    await restartBroadcast();
+  }
+
+  /// Hydrate UI state from Hive storage (users, messages)
+  Future<void> hydrateFromStorage() async {
+    final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
+    final sentBox = Hive.box<List>(kBoxMessagesSent);
+    final receivedBox = Hive.box<List>(kBoxMessagesReceived);
+
+    // Load users into discovered list (represents known peers)
+    final users = usersBox.values.toList();
+    discoveredList.value = users;
+
+    // Build message maps
+    final Map<ChatUserModel, List<MessageModel>> hydratedSent = {};
+    final Map<ChatUserModel, List<MessageModel>> hydratedReceived = {};
+
+    for (final user in users) {
+      final List<MessageModel> sent =
+          (sentBox.get(user.id)?.cast<MessageModel>()) ?? <MessageModel>[];
+      final List<MessageModel> received = (receivedBox.get(user.id)?.cast<MessageModel>()) ?? <MessageModel>[];
+      if (sent.isNotEmpty) hydratedSent[user] = sent;
+      if (received.isNotEmpty) hydratedReceived[user] = received;
+    }
+
+    sendMessages.value = hydratedSent;
+    receivedMessages.value = hydratedReceived;
   }
 
   /// Start advertising this device
@@ -174,12 +216,14 @@ class NearbyServices {
     print('Found endpoint: $endpointId ($userName)');
     _pendingConnections.add(endpointId);
 
-    // Add to discovered list
+    // Add to discovered list and persist in Hive users box
     final newUser = ChatUserModel(id: endpointId, userName: userName);
     discoveredList.value = [
       ...discoveredList.value.where((u) => u.id != endpointId),
       newUser,
     ];
+    final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
+    await usersBox.put(endpointId, newUser);
 
     await Nearby().requestConnection(
       _userName,
@@ -242,6 +286,10 @@ class NearbyServices {
         ...connectedEndpoints.value.where((u) => u.id != endpointId),
         user,
       ];
+
+      // Persist user in Hive
+      final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
+      usersBox.put(endpointId, user);
 
       print('Connected to ${user.userName}');
     } else {
@@ -348,6 +396,13 @@ class NearbyServices {
       sender: [...receivedMessages.value[sender] ?? [], message],
     };
 
+    // Persist received message
+    final box = Hive.box<List>(kBoxMessagesReceived);
+    final List<MessageModel> current =
+        (box.get(sender.id)?.cast<MessageModel>()) ?? <MessageModel>[];
+    final updated = [...current, message];
+    box.put(sender.id, updated);
+
     print('Message from ${sender.userName}: ${message.value}');
   }
 
@@ -368,6 +423,13 @@ class NearbyServices {
         ...sendMessages.value,
         user: [...sendMessages.value[user] ?? [], message],
       };
+
+      // Persist sent message
+      final box = Hive.box<List>(kBoxMessagesSent);
+      final List<MessageModel> current =
+          (box.get(user.id)?.cast<MessageModel>()) ?? <MessageModel>[];
+      final updated = [...current, message];
+      box.put(user.id, updated);
 
       print('Sent to ${user.userName}: ${message.value}');
     } catch (e) {

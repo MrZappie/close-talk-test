@@ -13,3 +13,9 @@ ValueNotifier<Map<ChatUserModel, List<MessageModel>>> receivedMessages =
 
 ValueNotifier<Map<ChatUserModel, List<MessageModel>>> sendMessages =
     ValueNotifier({});
+
+/// Hive box names
+const String kBoxProfile = 'box_profile'; // stores a single UserProfile with key 'me'
+const String kBoxUsers = 'box_users'; // key: userId, value: ChatUserModel
+const String kBoxMessagesSent = 'box_messages_sent'; // key: userId, value: List<MessageModel>
+const String kBoxMessagesReceived = 'box_messages_received'; // key: userId, value: List<MessageModel>

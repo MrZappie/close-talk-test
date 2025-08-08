@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:sample_app/core/constants.dart';
+import 'package:hive/hive.dart';
+import 'package:sample_app/core/values.dart';
+import 'package:sample_app/models/user_profile.dart';
 import 'package:sample_app/services/nearby_services.dart';
 
 class ProfilePage extends StatelessWidget {
   ProfilePage({super.key}) {
-    _controller.text = userName;
+    final Box<UserProfile> profileBox = Hive.box<UserProfile>(kBoxProfile);
+    final me = profileBox.get('me');
+    _controller.text = me?.userName ?? '';
   }
 
   final _service = NearbyServices();

@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sample_app/core/values.dart';
+import 'package:sample_app/core/hive_adapters.dart';
+import 'package:sample_app/models/chat_user_model.dart';
+import 'package:sample_app/models/user_profile.dart';
 import 'package:sample_app/core/nearby_state_storage.dart';
 import 'package:sample_app/presentation/base_page.dart';
 import 'package:sample_app/services/permissions.dart';
@@ -12,6 +17,16 @@ void main() async {
   });
   await NearbyStateStorage.clearNearbyState();
   await NearbyStateStorage.init();
+
+  // Hive init
+  await Hive.initFlutter();
+  Hive.registerAdapter(ChatUserModelAdapter());
+  Hive.registerAdapter(MessageModelAdapter());
+  Hive.registerAdapter(UserProfileAdapter());
+  await Hive.openBox<UserProfile>(kBoxProfile);
+  await Hive.openBox<ChatUserModel>(kBoxUsers);
+  await Hive.openBox<List>(kBoxMessagesSent);
+  await Hive.openBox<List>(kBoxMessagesReceived);
   runApp(MyApp());
 }
 
