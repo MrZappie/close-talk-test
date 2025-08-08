@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sample_app/presentation/home_page.dart';
-import 'package:sample_app/presentation/profile_page.dart';
+import 'package:sample_app/ui/screens/main_shell.dart';
 import 'package:sample_app/services/nearby_services.dart';
 
 class BasePage extends StatefulWidget {
@@ -11,10 +10,6 @@ class BasePage extends StatefulWidget {
 }
 
 class _BasePageState extends State<BasePage> with WidgetsBindingObserver {
-  int _selectedIndex = 0;
-
-  final List<Widget> _tabs = [HomePage(), ProfilePage()];
-
   final nearby = NearbyServices();
 
   @override
@@ -26,25 +21,8 @@ class _BasePageState extends State<BasePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _tabs[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.red,
-        currentIndex: _selectedIndex,
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
+    // Wrap the existing base with the new UI shell without overriding core logic
+    return const MainShell();
   }
 
   @override

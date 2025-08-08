@@ -4,6 +4,7 @@ import 'package:sample_app/core/values.dart';
 import 'package:sample_app/core/hive_adapters.dart';
 import 'package:sample_app/models/chat_user_model.dart';
 import 'package:sample_app/models/user_profile.dart';
+import 'package:uuid/uuid.dart';
 import 'package:sample_app/core/nearby_state_storage.dart';
 import 'package:sample_app/presentation/base_page.dart';
 import 'package:sample_app/services/permissions.dart';
@@ -27,6 +28,15 @@ void main() async {
   await Hive.openBox<ChatUserModel>(kBoxUsers);
   await Hive.openBox<List>(kBoxMessagesSent);
   await Hive.openBox<List>(kBoxMessagesReceived);
+
+  // Ensure a permanent unique id and profile exists at first launch
+  final profileBox = Hive.box<UserProfile>(kBoxProfile);
+  var me = profileBox.get('me');
+  if (me == null) {
+    final newId = const Uuid().v4();
+    me = UserProfile(id: newId, userName: 'User');
+    await profileBox.put('me', me);
+  }
   runApp(MyApp());
 }
 

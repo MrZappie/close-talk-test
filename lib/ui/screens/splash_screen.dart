@@ -1,8 +1,6 @@
-// lib/screens/splash_screen.dart
-
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
-import '../main.dart'; // We'll navigate to MainScreen from here
+import 'main_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -18,32 +16,25 @@ class _SplashScreenState extends State<SplashScreen> {
     _initializeApp();
   }
 
-  // This function simulates app initialization.
   Future<void> _initializeApp() async {
-    // Wait for 5 seconds to show the splash screen.
-    await Future.delayed(const Duration(seconds: 5));
-
-    // Navigate to the main screen.
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-      );
-    }
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const MainShell()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // --- Background color exactly matching GIF ---
       backgroundColor: const Color(0xFF201E1E),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Your App Name
             const Text(
-              "closeTalk",
+              'closeTalk',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
@@ -52,23 +43,11 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 40),
-
-            // Your specific GIF file
-            Image.asset(
-              'assets/loading1.gif',
-              width: 120,
-              height: 120,
-            ),
-
+            Image.asset('assets/loading1.gif', width: 120, height: 120),
             const SizedBox(height: 24),
-
-            // A loading message
             Text(
-              "Finding your circle...",
-              style: TextStyle(
-                fontSize: 16,
-                color: AppColors.lightAccent.withOpacity(0.8),
-              ),
+              'Finding your circle...',
+              style: TextStyle(fontSize: 16, color: AppColors.lightAccent.withOpacity(0.8)),
             ),
           ],
         ),
@@ -76,3 +55,5 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
+
+

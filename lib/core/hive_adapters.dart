@@ -17,17 +17,20 @@ class ChatUserModelAdapter extends TypeAdapter<ChatUserModel> {
     return ChatUserModel(
       id: fields[0] as String,
       userName: fields[1] as String,
+      endpointId: fields.containsKey(2) ? fields[2] as String? : null,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatUserModel obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.userName);
+      ..write(obj.userName)
+      ..writeByte(2)
+      ..write(obj.endpointId);
   }
 }
 

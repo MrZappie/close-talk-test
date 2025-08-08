@@ -1,0 +1,143 @@
+import 'package:flutter/material.dart';
+import 'package:sample_app/core/values.dart';
+import 'package:sample_app/models/chat_user_model.dart';
+import 'package:sample_app/models/message_model.dart';
+import 'package:sample_app/services/nearby_services.dart';
+import '../app_colors.dart';
+
+class ChatPage extends StatefulWidget {
+  final ChatUserModel user;
+  const ChatPage({super.key, required this.user});
+
+  @override
+  State<ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  final TextEditingController _messageController = TextEditingController();
+  final NearbyServices _service = NearbyServices();
+
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+    _service.sendChatMessage(
+      MessageModel(value: text, createdTime: DateTime.now()),
+      widget.user,
+    );
+    _messageController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        title: Row(children: [
+          const CircleAvatar(backgroundColor: AppColors.accent, foregroundColor: Colors.white, child: Icon(Icons.person)),
+          const SizedBox(width: 12),
+          Text(widget.user.userName),
+        ]),
+        actions: [IconButton(icon: const Icon(Icons.more_vert), onPressed: () {})],
+      ),
+      body: Column(children: [
+        Expanded(
+          child: ValueListenableBuilder<Map<ChatUserModel, List<MessageModel>>>(
+            valueListenable: receivedMessages,
+            builder: (context, receivedMap, _) {
+              return ValueListenableBuilder<Map<ChatUserModel, List<MessageModel>>>(
+                valueListenable: sendMessages,
+                builder: (context, sendMap, __) {
+                  final received = receivedMap[widget.user] ?? const <MessageModel>[];
+                  final sent = sendMap[widget.user] ?? const <MessageModel>[];
+                  final combined = <MessageModel>[...received, ...sent]
+                    ..sort((a, b) => a.createdTime.compareTo(b.createdTime));
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: combined.length,
+                    itemBuilder: (context, index) {
+                      final message = combined[index];
+                      final isSentByMe = sent.contains(message);
+                      return Align(
+                        alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: _FauxGlassBubble(text: message.value, isSentByMe: isSentByMe),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: Colors.grey.shade200,
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ValueListenableBuilder<List<ChatUserModel>>(
+              valueListenable: connectedEndpoints,
+              builder: (context, connected, _) {
+                final isConnected = connected.any((u) => u.id == widget.user.id);
+                return IconButton(
+                  icon: Icon(isConnected ? Icons.send : Icons.link),
+                  tooltip: isConnected ? 'Send' : 'Connect',
+                  onPressed: isConnected ? _sendMessage : null,
+                  style: IconButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                );
+              },
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _FauxGlassBubble extends StatelessWidget {
+  final String text;
+  final bool isSentByMe;
+  const _FauxGlassBubble({required this.text, required this.isSentByMe});
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = isSentByMe
+        ? LinearGradient(
+            colors: [AppColors.accent, Color.lerp(AppColors.accent, AppColors.primary, 0.3)!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : LinearGradient(
+            colors: [Colors.grey.shade300, Colors.grey.shade200],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+    final textColor = isSentByMe ? Colors.white : Colors.black87;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))],
+      ),
+      child: Text(text, style: TextStyle(color: textColor)),
+    );
+  }
+}
+
+

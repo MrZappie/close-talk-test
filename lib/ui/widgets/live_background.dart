@@ -1,10 +1,7 @@
-// lib/widgets/live_background.dart
-
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 
-// This is a reusable, code-based animation widget
 class LiveBackground extends StatefulWidget {
   final int numberOfStars;
   const LiveBackground({super.key, this.numberOfStars = 200});
@@ -59,7 +56,6 @@ class _LiveBackgroundState extends State<LiveBackground>
   }
 }
 
-// This CustomPainter handles the drawing of each star
 class _StarfieldPainter extends CustomPainter {
   final double time;
   final List<_Star> stars;
@@ -73,7 +69,7 @@ class _StarfieldPainter extends CustomPainter {
       final paint = Paint()
         ..color = AppColors.lightAccent.withOpacity(opacity * 0.8)
         ..style = PaintingStyle.fill;
-      
+
       canvas.drawCircle(
         Offset(star.position.dx * size.width, star.position.dy * size.height),
         star.radius,
@@ -86,7 +82,6 @@ class _StarfieldPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// A simple class to hold the properties of each star
 class _Star {
   final Offset position;
   final double radius;
@@ -94,3 +89,5 @@ class _Star {
 
   _Star({required this.position, required this.radius, required this.twinkleSpeed});
 }
+
+

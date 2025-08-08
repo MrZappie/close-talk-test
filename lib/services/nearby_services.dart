@@ -17,6 +17,7 @@ class NearbyServices {
   bool _isAdvertising = false;
   bool _isDiscovering = false;
   String _userName = 'User';
+  String? _myId; // permanent unique id stored in profile
   final Map<String, ChatUserModel> _connectedUsers = {};
   final Map<String, ConnectionInfo> _connectionInfoMap = {};
   final Set<String> _pendingConnections = {};
@@ -39,6 +40,7 @@ class NearbyServices {
       final UserProfile? me = profileBox.get('me');
       if (me != null) {
         _userName = me.userName;
+        _myId = me.id;
       }
       await hydrateFromStorage();
       await _startAdvertising();
@@ -136,7 +138,7 @@ class NearbyServices {
   Future<void> _startAdvertising() async {
     try {
       await Nearby().startAdvertising(
-        _userName,
+        _composeEndpointName(),
         strategy,
         onConnectionInitiated: (id, info) {
           _connectionInfoMap[id] = info;
@@ -216,14 +218,19 @@ class NearbyServices {
     print('Found endpoint: $endpointId ($userName)');
     _pendingConnections.add(endpointId);
 
+    // Parse endpointName to extract stable id and display name
+    final parsed = _parseEndpointName(userName);
+    final stableId = parsed.$2 ?? endpointId;
+    final displayName = parsed.$1;
+
     // Add to discovered list and persist in Hive users box
-    final newUser = ChatUserModel(id: endpointId, userName: userName);
+    final newUser = ChatUserModel(id: stableId, userName: displayName, endpointId: endpointId);
     discoveredList.value = [
-      ...discoveredList.value.where((u) => u.id != endpointId),
+      ...discoveredList.value.where((u) => u.endpointId != endpointId && u.id != stableId),
       newUser,
     ];
     final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
-    await usersBox.put(endpointId, newUser);
+    await usersBox.put(stableId, newUser);
 
     await Nearby().requestConnection(
       _userName,
@@ -247,12 +254,12 @@ class NearbyServices {
 
     // Update discovered list
     discoveredList.value = discoveredList.value
-        .where((u) => u.id != endpointId)
+        .where((u) => u.endpointId != endpointId)
         .toList();
 
     // Update connected list
     connectedEndpoints.value = connectedEndpoints.value
-        .where((u) => u.id != endpointId)
+        .where((u) => u.endpointId != endpointId)
         .toList();
 
     _connectedUsers.remove(endpointId);
@@ -276,20 +283,22 @@ class NearbyServices {
       _startConnectionMonitoring();
       _connectionAttempts.remove(endpointId);
       final info = _connectionInfoMap[endpointId];
+      final parsed = _parseEndpointName(info?.endpointName ?? 'Unknown');
       final user = ChatUserModel(
-        id: endpointId,
-        userName: info?.endpointName ?? 'Unknown',
+        id: parsed.$2 ?? endpointId,
+        userName: parsed.$1,
+        endpointId: endpointId,
       );
 
       _connectedUsers[endpointId] = user;
       connectedEndpoints.value = [
-        ...connectedEndpoints.value.where((u) => u.id != endpointId),
+        ...connectedEndpoints.value.where((u) => u.endpointId != endpointId && u.id != user.id),
         user,
       ];
 
       // Persist user in Hive
       final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
-      usersBox.put(endpointId, user);
+      usersBox.put(user.id, user);
 
       print('Connected to ${user.userName}');
     } else {
@@ -366,6 +375,22 @@ class NearbyServices {
       _connectionStability[endpointId] =
           (_connectionStability[endpointId] ?? 0) + 1;
     }
+  }
+
+  String _composeEndpointName() {
+    // Include display name and stable id so peers can map to a consistent user record
+    final name = _userName;
+    final id = _myId ?? '';
+    return id.isEmpty ? name : '$name|$id';
+  }
+
+  /// Parses endpoint name of the form "Name|uuid", returns (name, uuid?)
+  (String, String?) _parseEndpointName(String endpointName) {
+    final parts = endpointName.split('|');
+    if (parts.length >= 2) {
+      return (parts[0], parts[1]);
+    }
+    return (endpointName, null);
   }
 
   /// Process incoming messages
