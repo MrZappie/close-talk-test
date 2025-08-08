@@ -12,6 +12,7 @@ import 'package:sample_app/models/user_profile.dart';
 
 class NearbyServices {
   static const String _messageType = 'message';
+  static const String _usernameUpdateType = 'username_update';
 
   // State tracking
   bool _isAdvertising = false;
@@ -132,6 +133,10 @@ class NearbyServices {
     } else {
       await profileBox.put('me', me.copyWith(userName: newName));
     }
+    
+    // Broadcast username update to all connected users
+    await _broadcastUsernameUpdate(newName);
+    
     await restartBroadcast();
   }
 
@@ -159,6 +164,9 @@ class NearbyServices {
 
     sendMessages.value = hydratedSent;
     receivedMessages.value = hydratedReceived;
+    
+    // Check for any pending username updates
+    await _checkForUsernameUpdates();
   }
 
   /// Start advertising this device
@@ -248,6 +256,9 @@ class NearbyServices {
         // Add to blacklist to prevent immediate re-discovery
         _blacklistedEndpoints.add(endpointId);
       }
+      
+      // Periodic UI refresh to ensure both devices stay in sync
+      refreshUI();
     });
   }
 
@@ -310,8 +321,8 @@ class NearbyServices {
       },
       onDisconnected: _onDisconnected,
     );
-    discoveredList.notifyListeners();
-    connectedEndpoints.notifyListeners();
+    // Force UI refresh to update both devices
+    refreshUI();
      
   }
 
@@ -332,8 +343,8 @@ class NearbyServices {
 
     _connectedUsers.remove(endpointId);
     
-    discoveredList.notifyListeners();
-    connectedEndpoints.notifyListeners();
+    // Force UI refresh to update both devices
+    refreshUI();
   }
 
   /// Accept incoming connections
@@ -373,6 +384,12 @@ class NearbyServices {
       usersBox.put(endpointId, user);
 
       print('Connected to ${user.userName}');
+      
+      // Request username update from the connected user
+      _requestUsernameUpdate(endpointId);
+      
+      // Force UI refresh to update both devices
+      refreshUI();
     } else {
       _connectionAttempts[endpointId] =
           (_connectionAttempts[endpointId] ?? 0) + 1;
@@ -383,6 +400,8 @@ class NearbyServices {
         _blacklistedEndpoints.add(endpointId);
         print('Added $endpointId to blacklist due to connection failures');
       }
+      // Force UI refresh even on failure
+      refreshUI();
     }
   }
 
@@ -471,6 +490,10 @@ class NearbyServices {
       final data = jsonDecode(utf8.decode(payload.bytes!));
       if (data['type'] == _messageType) {
         _handleMessageReceived(endpointId, data);
+      } else if (data['type'] == _usernameUpdateType) {
+        _handleUsernameUpdate(endpointId, data);
+      } else if (data['type'] == 'username_request') {
+        _handleUsernameRequest(endpointId, data);
       }
       print(sendMessages.value);
       print(receivedMessages.value);
@@ -498,6 +521,120 @@ class NearbyServices {
     box.put(sender.id, updated);
 
     print('Message from ${sender.userName}: ${message.value}');
+  }
+
+  /// Handle username updates from other users
+  void _handleUsernameUpdate(String endpointId, Map<String, dynamic> data) {
+    final newUsername = data['newUsername'] as String?;
+    final userId = data['userId'] as String?;
+    
+    if (newUsername == null || userId == null) {
+      print('Invalid username update data');
+      return;
+    }
+
+    print('Received username update: $userId -> $newUsername');
+
+    // Update the user in all lists
+    _updateUserInLists(endpointId, newUsername);
+    
+    // Update Hive storage
+    _updateUserInHive(endpointId, newUsername);
+    
+    // Force UI refresh
+    refreshUI();
+  }
+
+  /// Update user's username in all lists
+  void _updateUserInLists(String endpointId, String newUsername) {
+    // Update in connected endpoints
+    final connectedIndex = connectedEndpoints.value.indexWhere((u) => u.endpointId == endpointId);
+    if (connectedIndex != -1) {
+      final updatedUser = connectedEndpoints.value[connectedIndex].copyWith(userName: newUsername);
+      connectedEndpoints.value = [
+        ...connectedEndpoints.value.take(connectedIndex),
+        updatedUser,
+        ...connectedEndpoints.value.skip(connectedIndex + 1),
+      ];
+    }
+
+    // Update in discovered list
+    final discoveredIndex = discoveredList.value.indexWhere((u) => u.endpointId == endpointId);
+    if (discoveredIndex != -1) {
+      final updatedUser = discoveredList.value[discoveredIndex].copyWith(userName: newUsername);
+      discoveredList.value = [
+        ...discoveredList.value.take(discoveredIndex),
+        updatedUser,
+        ...discoveredList.value.skip(discoveredIndex + 1),
+      ];
+    }
+
+    // Update in connected users map
+    if (_connectedUsers.containsKey(endpointId)) {
+      final updatedUser = _connectedUsers[endpointId]!.copyWith(userName: newUsername);
+      _connectedUsers[endpointId] = updatedUser;
+    }
+
+    print('Updated username for endpoint $endpointId to $newUsername');
+  }
+
+  /// Update user's username in Hive storage
+  void _updateUserInHive(String endpointId, String newUsername) {
+    final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
+    final existingUser = usersBox.get(endpointId);
+    if (existingUser != null) {
+      final updatedUser = existingUser.copyWith(userName: newUsername);
+      usersBox.put(endpointId, updatedUser);
+      print('Updated username in Hive for endpoint $endpointId');
+    }
+  }
+
+  /// Check for any pending username updates when reconnecting
+  Future<void> _checkForUsernameUpdates() async {
+    // This could be extended to check for username updates from a server
+    // For now, we rely on real-time updates when users are connected
+    print('Checking for username updates...');
+  }
+
+  /// Request username update from a connected user
+  void _requestUsernameUpdate(String endpointId) {
+    // Send a request for the user's current username
+    final bytes = utf8.encode(
+      jsonEncode({
+        'type': 'username_request',
+        'requestingUserId': _myId,
+        'createdTime': DateTime.now().toIso8601String(),
+      }),
+    );
+
+    try {
+      Nearby().sendBytesPayload(endpointId, bytes);
+      print('Requested username update from $endpointId');
+    } catch (e) {
+      print('Failed to request username update from $endpointId: $e');
+    }
+  }
+
+  /// Handle username request from another user
+  void _handleUsernameRequest(String endpointId, Map<String, dynamic> data) {
+    print('Received username request from $endpointId');
+    
+    // Send our current username back to the requesting user
+    final bytes = utf8.encode(
+      jsonEncode({
+        'type': _usernameUpdateType,
+        'newUsername': _userName,
+        'userId': _myId,
+        'createdTime': DateTime.now().toIso8601String(),
+      }),
+    );
+
+    try {
+      Nearby().sendBytesPayload(endpointId, bytes);
+      print('Sent current username ($_userName) to $endpointId');
+    } catch (e) {
+      print('Failed to send username update to $endpointId: $e');
+    }
   }
 
   /// Send chat message
@@ -584,5 +721,40 @@ class NearbyServices {
     discoveredList.value = [];
     discoveredList.notifyListeners();
     print('Cleared discovered users list');
+  }
+
+  /// Force refresh all UI lists
+  void refreshUI() {
+    discoveredList.notifyListeners();
+    connectedEndpoints.notifyListeners();
+    sendMessages.notifyListeners();
+    receivedMessages.notifyListeners();
+    print('Forced UI refresh');
+  }
+
+  /// Broadcast username update to all connected users
+  Future<void> _broadcastUsernameUpdate(String newUsername) async {
+    if (_connectedUsers.isEmpty) {
+      print('No connected users to broadcast username update to');
+      return;
+    }
+
+    final bytes = utf8.encode(
+      jsonEncode({
+        'type': _usernameUpdateType,
+        'newUsername': newUsername,
+        'userId': _myId,
+        'createdTime': DateTime.now().toIso8601String(),
+      }),
+    );
+
+    for (final endpointId in _connectedUsers.keys) {
+      try {
+        Nearby().sendBytesPayload(endpointId, bytes);
+        print('Broadcasted username update to $endpointId');
+      } catch (e) {
+        print('Failed to broadcast username update to $endpointId: $e');
+      }
+    }
   }
 }

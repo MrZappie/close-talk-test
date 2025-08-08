@@ -22,6 +22,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String? _lastUsernameUpdate;
 
   // UI is driven by ValueNotifiers; lists below are placeholders only for initial empty state
   final List<String> _currentDevices = const [];
@@ -47,6 +48,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     Navigator.of(context).push(MaterialPageRoute(builder: (context) => ChatPage(user: user)));
   }
 
+  void _showUsernameUpdateNotification(String oldName, String newName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$oldName updated their name to $newName'),
+        duration: const Duration(seconds: 3),
+        backgroundColor: AppColors.accent,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color darkShadow = Color.lerp(AppColors.primary, Colors.black, 0.4)!;
@@ -61,6 +72,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         backgroundColor: AppColors.primary,
         actions: [
           IconButton(
+            tooltip: 'Refresh UI',
+            icon: const Icon(Icons.sync),
+            onPressed: () => NearbyServices().refreshUI(),
+          ),
+          IconButton(
             tooltip: 'Restart broadcast',
             icon: const Icon(Icons.refresh),
             onPressed: () => NearbyServices().restartBroadcast(),
@@ -74,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Row(
               children: [
                 Expanded(child: _buildNeumorphicTab(0, "Current", darkShadow, lightShadow)),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 Expanded(child: _buildNeumorphicTab(1, "History", darkShadow, lightShadow)),
               ],
             ),
@@ -83,19 +99,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Current devices: from discoveredList
+                // Current devices: from connectedEndpoints (actually connected users)
                 ValueListenableBuilder<List<ChatUserModel>>(
-                  valueListenable: discoveredList,
-                  builder: (context, devices, _) {
+                  valueListenable: connectedEndpoints,
+                  builder: (context, connectedDevices, _) {
                     return _buildAnimatedListView(
-                      itemCount: devices.length,
+                      itemCount: connectedDevices.length,
                       itemBuilder: (context, index) {
-                        final user = devices[index];
+                        final user = connectedDevices[index];
                         return _buildWhiteListItem(
                           child: ListTile(
-                            leading: const Icon(Icons.person_outline, color: AppColors.primary, size: 28),
+                            leading: const Icon(Icons.person, color: AppColors.accent, size: 28),
                             title: Text(user.userName, style: const TextStyle(color: AppColors.primary, fontSize: 16, fontWeight: FontWeight.bold)),
-                            subtitle: const Text('Available to chat', style: TextStyle(color: Colors.grey)),
+                            subtitle: const Text('Connected - Ready to chat', style: TextStyle(color: Colors.green)),
                             trailing: _buildAvailabilityIndicator(true),
                           ),
                           onTap: () => _navigateToChat(user),
