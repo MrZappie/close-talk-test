@@ -16,6 +16,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final NearbyServices _service = NearbyServices();
+  bool _wasConnected = false;
 
   void _sendMessage() {
     final text = _messageController.text.trim();
@@ -27,6 +28,44 @@ class _ChatPageState extends State<ChatPage> {
     _messageController.clear();
   }
 
+  void _connectToUser() {
+    _service.connectToUser(widget.user);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Connecting to ${widget.user.userName}...'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen for connection changes
+    connectedEndpoints.addListener(_onConnectionChanged);
+  }
+
+  @override
+  void dispose() {
+    connectedEndpoints.removeListener(_onConnectionChanged);
+    super.dispose();
+  }
+
+  void _onConnectionChanged() {
+    final isConnected = connectedEndpoints.value.any((u) => u.id == widget.user.id || u.endpointId == widget.user.endpointId);
+    if (isConnected && !_wasConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connected to ${widget.user.userName}!'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+    _wasConnected = isConnected;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -35,9 +74,37 @@ class _ChatPageState extends State<ChatPage> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         title: Row(children: [
-          const CircleAvatar(backgroundColor: AppColors.accent, foregroundColor: Colors.white, child: Icon(Icons.person)),
+          ValueListenableBuilder<List<ChatUserModel>>(
+            valueListenable: connectedEndpoints,
+            builder: (context, connected, _) {
+              final isConnected = connected.any((u) => u.id == widget.user.id || u.endpointId == widget.user.endpointId);
+              return CircleAvatar(
+                backgroundColor: isConnected ? Colors.green : AppColors.accent,
+                foregroundColor: Colors.white,
+                child: Icon(isConnected ? Icons.person : Icons.person_outline),
+              );
+            },
+          ),
           const SizedBox(width: 12),
-          Text(widget.user.userName),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.user.userName),
+              ValueListenableBuilder<List<ChatUserModel>>(
+                valueListenable: connectedEndpoints,
+                builder: (context, connected, _) {
+                  final isConnected = connected.any((u) => u.id == widget.user.id || u.endpointId == widget.user.endpointId);
+                  return Text(
+                    isConnected ? 'Connected' : 'Not connected',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isConnected ? Colors.green : Colors.grey,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ]),
         actions: [IconButton(icon: const Icon(Icons.more_vert), onPressed: () {})],
       ),
@@ -92,12 +159,13 @@ class _ChatPageState extends State<ChatPage> {
               builder: (context, connected, _) {
                 final isConnected = connected.any((u) => u.id == widget.user.id || u.endpointId == widget.user.endpointId);
                 return IconButton(
-                  icon: Icon(isConnected ? Icons.send : Icons.link),
+                  icon: Icon(isConnected ? Icons.send : Icons.wifi),
                   tooltip: isConnected ? 'Send' : 'Connect',
-                  onPressed: isConnected ? _sendMessage : () {
-                    print(isConnected);
-                  },
-                  style: IconButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                  onPressed: isConnected ? _sendMessage : _connectToUser,
+                  style: IconButton.styleFrom(
+                    backgroundColor: isConnected ? AppColors.primary : Colors.orange,
+                    foregroundColor: Colors.white
+                  ),
                 );
               },
             ),
