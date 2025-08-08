@@ -22,7 +22,7 @@ class NearbyServices {
   final Map<String, ConnectionInfo> _connectionInfoMap = {};
   final Set<String> _pendingConnections = {};
   static const Duration _proximityCheckInterval = Duration(seconds: 5);
-  static const int _maxConnectionAttempts = 2; // Fail if can't connect quickly
+  static const int _maxConnectionAttempts = 5; // Allow more connection attempts
   final Map<String, int> _connectionAttempts = {};
   Timer? _proximityTimer;
   final Map<String, int> _connectionStability = {};
@@ -30,11 +30,17 @@ class NearbyServices {
   static const Duration _connectionCheckInterval = Duration(seconds: 3);
   static const int _maxStabilityThreshold =
       3; // Allowed consecutive weak signals
+  final Set<String> _blacklistedEndpoints = {}; // Prevent re-discovery of failed endpoints
+  final Map<String, DateTime> _connectionStartTimes = {}; // Track connection start times
+  static const Duration _connectionTimeout = Duration(seconds: 30); // 30 second timeout
 
   /// Start both advertising and discovery
   Future<void> startBroadcast() async {
     try {
-      if (_isAdvertising || _isDiscovering) return;
+      if (_isAdvertising || _isDiscovering) {
+        print('Broadcast already running');
+        return;
+      }
       // Load username from Hive profile, fallback if missing
       final Box<UserProfile> profileBox = Hive.box<UserProfile>(kBoxProfile);
       final UserProfile? me = profileBox.get('me');
@@ -59,6 +65,7 @@ class NearbyServices {
     await Future.delayed(const Duration(milliseconds: 500));
     await Nearby().stopAllEndpoints();
     _pendingConnections.clear();
+    _blacklistedEndpoints.clear(); // Clear blacklist on restart
     discoveredList.value = [];
     connectedUsers.clear();
     _connectionInfoMap.clear();
@@ -71,6 +78,11 @@ class NearbyServices {
   /// Stop all Nearby activities
   Future<void> stopBroadcast() async {
     try {
+      if (!_isAdvertising && !_isDiscovering) {
+        print('Broadcast already stopped');
+        return;
+      }
+
       if (_isAdvertising) {
         await Nearby().stopAdvertising();
         _isAdvertising = false;
@@ -139,6 +151,10 @@ class NearbyServices {
   /// Start advertising this device
   Future<void> _startAdvertising() async {
     try {
+      if (_isAdvertising) {
+        print('Already advertising');
+        return;
+      }
       await Nearby().startAdvertising(
         _composeEndpointName(),
         strategy,
@@ -165,6 +181,10 @@ class NearbyServices {
   /// Start discovering other devices
   Future<void> _startDiscovery() async {
     try {
+      if (_isDiscovering) {
+        print('Already discovering');
+        return;
+      }
       await Nearby().startDiscovery(
         _userName,
         strategy,
@@ -186,6 +206,22 @@ class NearbyServices {
   void _startProximityMonitoring() {
     _proximityTimer?.cancel();
     _proximityTimer = Timer.periodic(_proximityCheckInterval, (timer) {
+      final now = DateTime.now();
+      
+      // Check for timed out connections
+      final timedOutDevices = _connectionStartTimes.entries
+          .where((entry) => now.difference(entry.value) > _connectionTimeout)
+          .map((e) => e.key)
+          .toList();
+
+      for (final endpointId in timedOutDevices) {
+        print('Connection timeout for device: $endpointId');
+        _onEndpointLost(endpointId);
+        Nearby().disconnectFromEndpoint(endpointId);
+        _blacklistedEndpoints.add(endpointId);
+        _connectionStartTimes.remove(endpointId);
+      }
+
       // Remove devices that take too long to connect
       final distantDevices = _connectionAttempts.entries
           .where((entry) => entry.value > _maxConnectionAttempts)
@@ -196,17 +232,28 @@ class NearbyServices {
         print('Removing distant device: $endpointId');
         _onEndpointLost(endpointId);
         Nearby().disconnectFromEndpoint(endpointId);
+        // Add to blacklist to prevent immediate re-discovery
+        _blacklistedEndpoints.add(endpointId);
       }
     });
   }
 
-  /// Handle new device discovery
+    /// Handle new device discovery
   Future<void> _onEndpointFound(
     String endpointId,
     String userName,
     String serviceId,
   ) async {
-    if (_pendingConnections.contains(endpointId)) return;
+    // Skip if blacklisted
+    if (_blacklistedEndpoints.contains(endpointId)) {
+      print('Skipping blacklisted endpoint: $endpointId');
+      return;
+    }
+
+    if (_pendingConnections.contains(endpointId)) {
+      print('Already attempting connection to $endpointId');
+      return;
+    }
 
     // Track connection attempts
     _connectionAttempts[endpointId] =
@@ -214,11 +261,13 @@ class NearbyServices {
 
     // Skip if too many attempts (likely distant)
     if (_connectionAttempts[endpointId]! > _maxConnectionAttempts) {
-      print('Skipping distant endpoint: $endpointId');
+      print('Skipping distant endpoint: $endpointId (attempts: ${_connectionAttempts[endpointId]})');
+      _blacklistedEndpoints.add(endpointId); // Add to blacklist
       return;
     }
-    print('Found endpoint: $endpointId ($userName)');
+    print('Found endpoint: $endpointId ($userName) - attempt ${_connectionAttempts[endpointId]}');
     _pendingConnections.add(endpointId);
+    _connectionStartTimes[endpointId] = DateTime.now(); // Track connection start time
 
     // Use endpointId as the stable id for this user, and userName as display name
     final displayName = userName;
@@ -232,14 +281,17 @@ class NearbyServices {
     final usersBox = Hive.box<ChatUserModel>(kBoxUsers);
     await usersBox.put(endpointId, newUser);
 
+    print('Requesting connection to $endpointId ($userName)');
     await Nearby().requestConnection(
       _userName,
       endpointId,
       onConnectionInitiated: (id, info) {
+        print('Connection initiated with $id');
         _connectionInfoMap[id] = info;
         _onConnectionInitiated(id, info);
       },
       onConnectionResult: (id, status) {
+        print('Connection result for $id: $status');
         _pendingConnections.remove(id);
         _onConnectionResult(id, status);
       },
@@ -247,7 +299,7 @@ class NearbyServices {
     );
     discoveredList.notifyListeners();
     connectedEndpoints.notifyListeners();
-    
+     
   }
 
   /// Handle lost device
@@ -285,6 +337,8 @@ class NearbyServices {
   void _onConnectionResult(String endpointId, Status status) {
     if (status == Status.CONNECTED) {
       _connectionAttempts.remove(endpointId);
+      _connectionStartTimes.remove(endpointId); // Clean up start time
+      _blacklistedEndpoints.remove(endpointId); // Remove from blacklist on success
       _connectionStability[endpointId] = 0; // Initialize stability counter
       _startConnectionMonitoring();
       _connectionAttempts.remove(endpointId);
@@ -310,6 +364,12 @@ class NearbyServices {
       _connectionAttempts[endpointId] =
           (_connectionAttempts[endpointId] ?? 0) + 1;
       print('Connection failed to $endpointId: $status');
+      
+      // Add to blacklist if too many failures
+      if (_connectionAttempts[endpointId]! > _maxConnectionAttempts) {
+        _blacklistedEndpoints.add(endpointId);
+        print('Added $endpointId to blacklist due to connection failures');
+      }
     }
   }
 
@@ -430,6 +490,16 @@ class NearbyServices {
   /// Send chat message
   void sendChatMessage(MessageModel message, ChatUserModel user) {
     try {
+      if (user.endpointId == null) {
+        print('Cannot send message: user endpointId is null');
+        return;
+      }
+
+      // Debug: Check if user is actually connected
+      final isConnected = _connectedUsers.containsKey(user.endpointId);
+      print('Sending message to ${user.userName} (${user.endpointId}): connected=$isConnected');
+      print('Connected users: ${_connectedUsers.keys.toList()}');
+
       final bytes = utf8.encode(
         jsonEncode({
           'type': _messageType,
@@ -438,7 +508,7 @@ class NearbyServices {
         }),
       );
 
-      Nearby().sendBytesPayload(user.id, bytes);
+      Nearby().sendBytesPayload(user.endpointId!, bytes);
 
       sendMessages.value = {
         ...sendMessages.value,
@@ -463,4 +533,36 @@ class NearbyServices {
   bool get isDiscovering => _isDiscovering;
   List<ChatUserModel> get connectedUsers => connectedEndpoints.value;
   List<ChatUserModel> get discoveredUsers => discoveredList.value;
+
+  /// Manually connect to a user
+  Future<void> connectToUser(ChatUserModel user) async {
+    if (user.endpointId == null) {
+      print('Cannot connect: user endpointId is null');
+      return;
+    }
+
+    if (_pendingConnections.contains(user.endpointId)) {
+      print('Already attempting connection to ${user.endpointId}');
+      return;
+    }
+
+    print('Manually connecting to ${user.userName} (${user.endpointId})');
+    _pendingConnections.add(user.endpointId!);
+    
+    await Nearby().requestConnection(
+      _userName,
+      user.endpointId!,
+      onConnectionInitiated: (id, info) {
+        print('Manual connection initiated with $id');
+        _connectionInfoMap[id] = info;
+        _onConnectionInitiated(id, info);
+      },
+      onConnectionResult: (id, status) {
+        print('Manual connection result for $id: $status');
+        _pendingConnections.remove(id);
+        _onConnectionResult(id, status);
+      },
+      onDisconnected: _onDisconnected,
+    );
+  }
 }

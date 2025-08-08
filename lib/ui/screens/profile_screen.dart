@@ -91,14 +91,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Broadcast Location', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500)),
                   subtitle: const Text('Allow others to see you nearby', style: TextStyle(color: Colors.grey)),
                   value: isLocationBroadcasting,
-                  onChanged: (value) async {
-                    setState(() => isLocationBroadcasting = value);
-                    if (value) {
-                      await _service.startBroadcast();
-                    } else {
-                      await _service.stopBroadcast();
-                    }
-                  },
+                                     onChanged: (value) async {
+                     // Prevent rapid toggling
+                     if (value == isLocationBroadcasting) return;
+                     
+                     setState(() => isLocationBroadcasting = value);
+                     try {
+                       if (value) {
+                         await _service.startBroadcast();
+                       } else {
+                         await _service.stopBroadcast();
+                       }
+                     } catch (e) {
+                       // Revert state if operation failed
+                       setState(() => isLocationBroadcasting = !value);
+                       print('Broadcast toggle error: $e');
+                     }
+                   },
                 ),
               ),
               _buildWhiteListItem(

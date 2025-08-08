@@ -90,11 +90,13 @@ class _ChatPageState extends State<ChatPage> {
             ValueListenableBuilder<List<ChatUserModel>>(
               valueListenable: connectedEndpoints,
               builder: (context, connected, _) {
-                final isConnected = connected.any((u) => u.id == widget.user.id);
+                final isConnected = connected.any((u) => u.id == widget.user.id || u.endpointId == widget.user.endpointId);
                 return IconButton(
                   icon: Icon(isConnected ? Icons.send : Icons.link),
                   tooltip: isConnected ? 'Send' : 'Connect',
-                  onPressed: isConnected ? _sendMessage : null,
+                  onPressed: isConnected ? _sendMessage : () {
+                    print(isConnected);
+                  },
                   style: IconButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
                 );
               },
