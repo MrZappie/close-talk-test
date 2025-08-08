@@ -1,0 +1,261 @@
+import 'dart:convert';
+import 'package:nearby_connections/nearby_connections.dart';
+import 'package:sample_app/core/constants.dart';
+import 'package:sample_app/core/nearby_state_storage.dart';
+import 'package:sample_app/core/values.dart';
+import 'package:sample_app/models/chat_user_model.dart';
+import 'package:sample_app/models/message_model.dart';
+
+class NearbyServices {
+  static const String _messageType = 'message';
+
+  // State tracking
+  bool _isAdvertising = false;
+  bool _isDiscovering = false;
+  String _userName = userName;
+  final Map<String, ChatUserModel> _connectedUsers = {};
+  final Map<String, ConnectionInfo> _connectionInfoMap = {};
+  final Set<String> _pendingConnections = {};
+
+  /// Start both advertising and discovery
+  Future<void> startBroadcast() async {
+    try {
+      if (_isAdvertising || _isDiscovering) return;
+
+      await _startAdvertising();
+      await _startDiscovery();
+
+      print('Broadcast started as $_userName');
+    } catch (e) {
+      print('Start broadcast error: $e');
+      rethrow;
+    }
+  }
+
+  /// Restart broadcast with current settings
+  Future<void> restartBroadcast() async {
+    await stopBroadcast();
+    await Future.delayed(const Duration(milliseconds: 500));
+    await startBroadcast();
+  }
+
+  /// Stop all Nearby activities
+  Future<void> stopBroadcast() async {
+    try {
+      if (_isAdvertising) {
+        await Nearby().stopAdvertising();
+        _isAdvertising = false;
+        NearbyStateStorage.setIsAdvertising(false);
+      }
+
+      if (_isDiscovering) {
+        await Nearby().stopDiscovery();
+        _isDiscovering = false;
+        NearbyStateStorage.setIsDiscovering(false);
+      }
+
+      _pendingConnections.clear();
+      print('Broadcast stopped');
+    } catch (e) {
+      print('Stop broadcast error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update username and restart if needed
+  Future<void> updateUserName(String newName) async {
+    _userName = newName;
+    if (_isAdvertising || _isDiscovering) {
+      await restartBroadcast();
+    }
+  }
+
+  /// Start advertising this device
+  Future<void> _startAdvertising() async {
+    try {
+      await Nearby().startAdvertising(
+        _userName,
+        strategy,
+        onConnectionInitiated: (id, info) {
+          _connectionInfoMap[id] = info;
+          _onConnectionInitiated(id, info);
+        },
+        onConnectionResult: (id, status) {
+          _pendingConnections.remove(id);
+          _onConnectionResult(id, status);
+        },
+        onDisconnected: _onDisconnected,
+      );
+      _isAdvertising = true;
+      NearbyStateStorage.setIsAdvertising(true);
+      print('Advertising as $_userName');
+    } catch (e) {
+      _isAdvertising = false;
+      print('Advertising error: $e');
+      rethrow;
+    }
+  }
+
+  /// Start discovering other devices
+  Future<void> _startDiscovery() async {
+    try {
+      await Nearby().startDiscovery(
+        _userName,
+        strategy,
+        onEndpointFound: _onEndpointFound,
+        onEndpointLost: _onEndpointLost,
+      );
+      _isDiscovering = true;
+      NearbyStateStorage.setIsDiscovering(true);
+      print('Discovery started');
+    } catch (e) {
+      _isDiscovering = false;
+      print('Discovery error: $e');
+      rethrow;
+    }
+  }
+
+  /// Handle new device discovery
+  Future<void> _onEndpointFound(
+    String endpointId,
+    String userName,
+    String serviceId,
+  ) async {
+    if (_pendingConnections.contains(endpointId)) return;
+
+    print('Found endpoint: $endpointId ($userName)');
+    _pendingConnections.add(endpointId);
+
+    // Add to discovered list
+    final newUser = ChatUserModel(id: endpointId, userName: userName);
+    discoveredList.value = [
+      ...discoveredList.value.where((u) => u.id != endpointId),
+      newUser,
+    ];
+
+    await Nearby().requestConnection(
+      _userName,
+      endpointId,
+      onConnectionInitiated: (id, info) {
+        _connectionInfoMap[id] = info;
+        _onConnectionInitiated(id, info);
+      },
+      onConnectionResult: (id, status) {
+        _pendingConnections.remove(id);
+        _onConnectionResult(id, status);
+      },
+      onDisconnected: _onDisconnected,
+    );
+  }
+
+  /// Handle lost device
+  void _onEndpointLost(String? endpointId) {
+    print('Lost endpoint: $endpointId');
+    _pendingConnections.remove(endpointId);
+
+    // Update discovered list
+    discoveredList.value = discoveredList.value
+        .where((u) => u.id != endpointId)
+        .toList();
+
+    // Update connected list
+    connectedEndpoints.value = connectedEndpoints.value
+        .where((u) => u.id != endpointId)
+        .toList();
+
+    _connectedUsers.remove(endpointId);
+  }
+
+  /// Accept incoming connections
+  void _onConnectionInitiated(String endpointId, ConnectionInfo info) {
+    print('Connection initiated with ${info.endpointName} ($endpointId)');
+    Nearby().acceptConnection(
+      endpointId,
+      onPayLoadRecieved: _onPayloadReceived,
+    );
+  }
+
+  /// Handle connection results
+  void _onConnectionResult(String endpointId, Status status) {
+    if (status == Status.CONNECTED) {
+      final info = _connectionInfoMap[endpointId];
+      final user = ChatUserModel(
+        id: endpointId,
+        userName: info?.endpointName ?? 'Unknown',
+      );
+
+      _connectedUsers[endpointId] = user;
+      connectedEndpoints.value = [
+        ...connectedEndpoints.value.where((u) => u.id != endpointId),
+        user,
+      ];
+
+      print('Connected to ${user.userName}');
+    } else {
+      print('Connection failed to $endpointId: $status');
+    }
+  }
+
+  /// Handle disconnections
+  void _onDisconnected(String endpointId) {
+    print('Disconnected from $endpointId');
+    connectedEndpoints.value = connectedEndpoints.value
+        .where((u) => u.id != endpointId)
+        .toList();
+    _connectedUsers.remove(endpointId);
+  }
+
+  /// Process incoming messages
+  void _onPayloadReceived(String endpointId, Payload payload) {
+    try {
+      if (payload.bytes == null) return;
+
+      final data = jsonDecode(utf8.decode(payload.bytes!));
+      if (data['type'] == _messageType) {
+        _handleMessageReceived(endpointId, data);
+      }
+    } catch (e) {
+      print('Payload processing error: $e');
+    }
+  }
+
+  /// Handle chat messages
+  void _handleMessageReceived(String endpointId, Map<String, dynamic> data) {
+    final sender = _connectedUsers[endpointId];
+    if (sender == null) return;
+
+    final message = MessageModel.fromJson(data['message']);
+    receivedMessages.value = {
+      ...receivedMessages.value,
+      sender: [...receivedMessages.value[sender] ?? [], message],
+    };
+
+    print('Message from ${sender.userName}: ${message.value}');
+  }
+
+  /// Send chat message
+  void sendChatMessage(MessageModel message, ChatUserModel user) {
+    try {
+      final bytes = utf8.encode(
+        jsonEncode({'type': _messageType, 'message': message.toJson()}),
+      );
+
+      Nearby().sendBytesPayload(user.id, bytes);
+
+      sendMessages.value = {
+        ...sendMessages.value,
+        user: [...sendMessages.value[user] ?? [], message],
+      };
+
+      print('Sent to ${user.userName}: ${message.value}');
+    } catch (e) {
+      print('Message send error: $e');
+    }
+  }
+
+  /// Get current state
+  bool get isAdvertising => _isAdvertising;
+  bool get isDiscovering => _isDiscovering;
+  List<ChatUserModel> get connectedUsers => connectedEndpoints.value;
+  List<ChatUserModel> get discoveredUsers => discoveredList.value;
+}
