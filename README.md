@@ -4,8 +4,8 @@
 ### Team Name: MitsFits
 
 ### Team Members
-- Team Lead: Sourav Sreekumar - [College]
-- Member 2: Sreya S - [College]
+- Team Lead: Sourav Sreekumar - [Muthoot Institute Of Technology & Science]
+- Member 2: Sreya S - [Muthoot Institute Of Technology & Science]
 
 ### Project Description
 Close Talk is a peer-to-peer, internet-free chat app that discovers nearby devices and lets you exchange messages directly over local connections. Profiles and conversations  are stored locally.
