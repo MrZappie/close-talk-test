@@ -53,18 +53,22 @@ Notes:
 For Software:
 
 #### Screenshots (Add at least 3)
-![Home/Discovery](docs/screenshots/home_discovery.png)
-Shows discovered nearby users and connection status.
+
+ users and connection status.
+![hometab_current](https://github.com/user-attachments/assets/d455caf1-fa54-48f5-854d-824b83a97966)
 
 ![Chat](docs/screenshots/chat_thread.png)
 Chat thread with faux-glass bubbles and live sent/received messages.
+![hometab_history](https://github.com/user-attachments/assets/54d021e7-a40c-4b15-ac5f-f26c9f4ae204)
 
 ![Profile](docs/screenshots/profile_screen.png)
 Profile screen with username edit and broadcast toggle.
+![profile](https://github.com/user-attachments/assets/9c88fc86-9abe-423b-802d-bf032c9478a4)
 
 #### Diagrams
 ![Workflow](docs/diagrams/workflow.png)
-Discovery ↔ Connect ↔ Exchange messages; profile and messages persisted locally (Hive); broadcast/discovery state cached (SharedPreferences).
+Discovery ↔ Connect ↔ E<img width="1536" height="1024" alt="ChatGPT Image Aug 9, 2025, 05_27_45 AM" src="https://github.com/user-attachments/assets/174623f9-ebfa-419a-b773-195e303d66db" />
+xchange messages; profile and messages persisted locally (Hive); broadcast/discovery state cached (SharedPreferences).
 
 For Hardware:
 
@@ -76,11 +80,18 @@ Not applicable.
 
 ### Project Demo
 #### Video
+
+https://github.com/user-attachments/assets/26ebc032-991c-4e0f-9427-7ee9b66eb439
+
+
 [Add your demo video link here]
-Walkthrough: discovery, connect, send messages, edit profile and toggle broadcasting.
+Walkthrough: discovery, con
+https://github.com/user-attachments/assets/53a353d9-f173-4b5b-a7e1-c18008a6bc71
+
+
+nect, send messages, edit profile and toggle broadcasting.
 
 #### Additional Demos
-[Add any extra demo materials/links]
 
 ## Team Contributions
 - Sourav Sreekumar: Nearby discovery/connection flow, messaging pipeline, state management, build setup, permission handling
